@@ -1,71 +1,62 @@
-
-export default async (request) => {
-  const token = process.env.FOOTBALL_DATA_TOKEN;
-
-  if (!token) {
-    return Response.json(
-      { error: "API token is not configured on Netlify." },
-      { status: 500 }
-    );
-  }
+export const handler = async () => {
+  const headers = {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store"
+  };
 
   try {
-    const url = new URL(
-      "https://api.football-data.org/v4/matches"
-    );
+    const apiKey = process.env.FOOTBALL_API_KEY;
 
-    // Today's matches, using UTC dates.
-    const today = new Date().toISOString().slice(0, 10);
-    url.searchParams.set("dateFrom", today);
-    url.searchParams.set("dateTo", today);
-
-    const apiResponse = await fetch(url, {
-      headers: {
-        "X-Auth-Token": token
-      }
-    });
-
-    if (!apiResponse.ok) {
-      console.error(
-        "Football API returned status:",
-        apiResponse.status
-      );
-
-      return Response.json(
-        {
-          error:
-            apiResponse.status === 429
-              ? "API request limit reached."
-              : apiResponse.status === 403
-              ? "Your plan may not allow this data."
-              : apiResponse.status === 401
-              ? "Invalid API token."
-              : "Football data provider error."
-        },
-        { status: apiResponse.status === 429 ? 429 : 502 }
-      );
+    if (!apiKey) {
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({
+          error: "Football API key is not configured on Netlify."
+        })
+      };
     }
 
-    const data = await apiResponse.json();
-
-    return Response.json(
+    const response = await fetch(
+      "https://api.football-data.org/v4/matches",
       {
-        matches: data.matches || [],
-        count: (data.matches || []).length,
-        updatedAt: new Date().toISOString()
-      },
-      {
+        method: "GET",
         headers: {
-          "Cache-Control": "public, max-age=30"
+          "X-Auth-Token": apiKey
         }
       }
     );
-  } catch (error) {
-    console.error("Matches function error:", error);
 
-    return Response.json(
-      { error: "Unable to fetch football matches." },
-      { status: 502 }
-    );
+    const data = await response.json();
+
+    if (!response.ok) {
+      return {
+        statusCode: response.status,
+        headers,
+        body: JSON.stringify({
+          error: "The football API request failed.",
+          details: data.message || "Check your API key and API access."
+        })
+      };
+    }
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        count: data.matches?.length || 0,
+        matches: data.matches || []
+      })
+    };
+  } catch (error) {
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        error: "Unable to fetch football matches.",
+        details: error.message
+      })
+    };
   }
 };
